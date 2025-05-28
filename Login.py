@@ -8,7 +8,12 @@ import json
 import random  # Added for shuffling
 
 # --- Configuration ---
-SUCCESSFUL_LOGIN_CANDIDATES_FILE = "successful.json"  # Source for login attempts
+# --- MODIFICATION START ---
+# Get the absolute directory path where this login.py script is located
+_LOGIN_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Construct the absolute path to successful.json, assuming it's in the same directory
+SUCCESSFUL_LOGIN_CANDIDATES_FILE = os.path.join(_LOGIN_SCRIPT_DIR, "successful.json")
+# --- MODIFICATION END ---
 
 # Network and Login Configuration
 LOGOUT_URL_TEMPLATE = "http://172.16.1.38:801/eportal/?c=ACSetting&a=Logout&loginMethod=1&protocol=http%3A&hostname=172.16.1.38&port=&iTermType={iTermType}&wlanuserip={local_ip}&wlanacip=172.20.1.1&wlanacname=huawei-me60&redirect=null&session=null&vlanid=null%3Cinput+type%3D&ip={local_ip}&queryACIP=0&jsVersion=2.4.3"
@@ -48,6 +53,7 @@ def get_local_ip_address():
 
 def load_login_candidates():
     global login_candidates
+    # SUCCESSFUL_LOGIN_CANDIDATES_FILE is now an absolute path
     try:
         if os.path.exists(SUCCESSFUL_LOGIN_CANDIDATES_FILE) and os.path.getsize(SUCCESSFUL_LOGIN_CANDIDATES_FILE) > 0:
             with open(SUCCESSFUL_LOGIN_CANDIDATES_FILE, 'r', encoding='utf-8') as f:
@@ -157,7 +163,7 @@ if __name__ == "__main__":
     local_ip = get_local_ip_address()
     if not local_ip:
         print("[错误] 自动获取IP失败，无法进行登录操作。程序将退出。")
-        sys.exit(1)  # Exit if IP cannot be obtained automatically
+        sys.exit(1)
     print(f"\n[信息] 当前使用的IP地址: {local_ip}")
 
     # --- Perform Pre-Logout (Single round, iterating through iTermTypes) ---
@@ -166,8 +172,6 @@ if __name__ == "__main__":
     for itype in ITERM_TYPES_FOR_PRE_LOGOUT:
         if perform_logout(local_ip, logged_in_account_info="预下线操作", logged_in_iTermType=itype):
             any_pre_logout_signal_sent_successfully = True
-            # Optional: could print success for this specific itype here if verbose logging is desired
-            # print(f"  [预下线] 成功为 iTermType {itype} 发送下线信号。")
 
     if any_pre_logout_signal_sent_successfully:
         print(f"  [预下线] 预下线信号已为各类型尝试发送，并至少有一个类型发送成功。")
@@ -183,7 +187,6 @@ if __name__ == "__main__":
 
     logged_in_successfully = False
     print(f"[信息] 开始尝试使用 {len(login_candidates)} 个已存储的凭据进行登录 (密码: '{PASSWORD}')")
-    # Removed input("按 Enter 开始登录尝试...\n") for full automation
 
     for candidate_index, candidate in enumerate(login_candidates):
         account = candidate.get('account')

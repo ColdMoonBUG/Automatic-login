@@ -1,57 +1,53 @@
-@echo off
-CHCP 65001 > NUL
 
+@echo off
+CHCP 65001 >NUL
 SETLOCAL ENABLEDELAYEDEXPANSION
 
-REM 校园网监控后台自启动配置脚本
-REM 运行此脚本将创建一个计划任务，使 auth_monitor.py 在用户登录时自动后台运行。
+SET "LOG_FILE=%~dp0task_setup.log"
+echo [%date% %time%] 任务配置开始 >> "%LOG_FILE%"
 
-SET "SCRIPT_DIR=%~dp0"
-IF "%SCRIPT_DIR:~-1%"=="\" SET "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+SET "PY_SCRIPT=%~dp0auth_monitor.py"
+SET "TASK_NAME=CampusNetAuthMonitor"
 
-SET "PYTHON_SCRIPT_NAME=auth_monitor.py"
-SET "FULL_SCRIPT_PATH=%SCRIPT_DIR%\%PYTHON_SCRIPT_NAME%"
-
-SET "TASK_NAME=CampusNetAuthMonitorStartup"
-
-SET "PYTHON_EXECUTABLE="
-FOR /F "usebackq tokens=*" %%P IN (`where pythonw.exe 2^>nul`) DO (
-    SET "PYTHON_EXECUTABLE=%%P"
-    GOTO FoundPythonExecutable
-)
-FOR /F "usebackq tokens=*" %%P IN (`where pyw.exe 2^>nul`) DO (
-    SET "PYTHON_EXECUTABLE=%%P"
-    GOTO FoundPythonExecutable
+:: 验证Python脚本存在
+if not exist "%PY_SCRIPT%" (
+    echo [错误] 未找到脚本文件: %PY_SCRIPT% | tee -a "%LOG_FILE%"
+    goto ERROR
 )
 
-IF NOT DEFINED PYTHON_EXECUTABLE (
-    echo [错误] 未能在系统路径中找到 pythonw.exe 或 pyw.exe。
-    echo 请确保您已正确安装Python，并将其添加到了系统的PATH环境变量中。
-    goto EndScript
+:: 智能选择Python解释器
+SET "PY_EXE="
+for %%I in (pythonw.exe pyw.exe) do (
+    where %%I >nul 2>&1 && (
+        SET "PY_EXE=%%I"
+        goto FOUND_PYTHON
+    )
 )
 
-:FoundPythonExecutable
-echo [信息] 将使用Python可执行文件: "%PYTHON_EXECUTABLE%"
-echo [信息] Python脚本路径: "%FULL_SCRIPT_PATH%"
-echo [信息] 脚本工作目录将设置为: "%SCRIPT_DIR%"
+:ERROR
+echo [错误] 需要Python环境支持 | tee -a "%LOG_FILE%"
+goto END
 
-SET "TASK_COMMAND=cmd /c cd /d \"%SCRIPT_DIR%\" && \"%PYTHON_EXECUTABLE%\" \"%FULL_SCRIPT_PATH%\""
+:FOUND_PYTHON
+:: 任务存在检测
+schtasks /query /tn "%TASK_NAME%" >nul 2>&1 && (
+    echo [警告] 任务已存在，执行更新操作 | tee -a "%LOG_FILE%"
+    SET "TASK_ACTION=/change"
+) || SET "TASK_ACTION=/create"
 
-echo [操作] 正在尝试创建/更新计划任务: "%TASK_NAME%"
-echo       任务命令: %TASK_COMMAND%
-echo       触发器: 用户登录时
+:: 创建/更新任务
+schtasks %TASK_ACTION% /tn "%TASK_NAME%" ^
+    /tr "\"%PY_EXE%\" \"%PY_SCRIPT%\"" ^
+    /sc onlogon /ru SYSTEM /rl HIGHEST /f /it
 
-SCHTASKS /CREATE /TN "%TASK_NAME%" /TR "%TASK_COMMAND%" /SC ONLOGON /F /RL HIGHEST 
-
-IF !ERRORLEVEL! EQU 0 (
-    echo [成功] 计划任务 "%TASK_NAME%" 已成功创建或更新。
-    echo        监控脚本 auth_monitor.py 将在您下次登录时自动在后台启动。
-) ELSE (
-    echo [错误] 创建/更新计划任务 "%TASK_NAME%" 失败。错误代码: !ERRORLEVEL!
-    echo        如果您遇到权限问题，请尝试以管理员身份运行此 .bat 脚本。
+if %errorlevel% neq 0 (
+    echo [错误] 任务配置失败(代码%errorlevel%) | tee -a "%LOG_FILE%"
+) else (
+    echo [成功] 计划任务已配置 | tee -a "%LOG_FILE%"
+    :: 立即测试执行
+    start "" "%PY_EXE%" "%PY_SCRIPT%"
 )
 
-:EndScript
-echo 按任意键退出...
+:END
+echo 操作日志已保存到: %LOG_FILE%
 pause
-ENDLOCAL
